@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""tsvpn: Tailscale inside ExpressVPN, from the command line.
+
+Usage: tsvpn [command] [options]
+
+Status
+  status [--json] [--host NAME]   Show status (default command). Exit code:
+                                  0 green, 1 yellow, 2 red.
+  watch [--interval N]            Live status, refreshed every N seconds (default 5).
+  check                           Run the full local check (check.sh).
+  demo [ok|warn|bad]              Show made-up status (for screenshots/testing).
+
+Control
+  vpn on|off                      Connect or disconnect ExpressVPN.
+  tailscale on|off                Turn Tailscale on or off (alias: ts).
+  repair                          Restart the helper services (asks for your password).
+
+Desktop
+  tray                            Start the tray app.
+  window                          Start the tray app and open its status window.
+  widget                          Open the Plasma widget in its own window.
+
+Setup
+  setup                           Apply the system setup (runs setup.sh with sudo).
+  uninstall [parts]               Undo it (runs uninstall.sh with sudo).
+  install                         Install this command, the tray app and the widget.
+  remove                          Remove this command, the tray app and the widget.
+
+  help                            Show this help.
+
+The watched device comes from TSVPN_HOST in config.env next to this file, or --host.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.realpath(__file__))
+APP = os.path.join(ROOT, "app")
+sys.path.insert(0, APP)
+import tsvpn_status as backend  # noqa: E402
+
+EXIT = {"ok": 0, "warn": 1, "bad": 2}
+COLOR = {"ok": "32", "warn": "33", "bad": "31", "off": "90"}
+MARK = {"ok": "✓", "warn": "!", "bad": "✗", "off": "·"}
+
+
+def use_color():
+    return sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+
+
+def paint(text, level, bold=False):
+    if not use_color():
+        return text
+    return "\033[%s%sm%s\033[0m" % ("1;" if bold else "", COLOR[level], text)
+
+
+def render(s):
+    lines = [paint("● " + s["summary"], s["level"], bold=True)]
+    for level, label, value in backend.rows(s):
+        lines.append("  %s %-16s %s" % (paint(MARK[level], level), label, value))
+    for p in s["problems"]:
+        lines.append(paint("  • " + p, s["level"]))
+    return "\n".join(lines)
+
+
+def opt(args, name, default=None):
+    if name in args:
+        i = args.index(name)
+        if i + 1 < len(args):
+            return args[i + 1]
+        die("%s needs a value" % name)
+    return default
+
+
+def die(msg, code=3):
+    print("tsvpn: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def cmd_status(args):
+    host = opt(args, "--host", backend.DEFAULT_HOST)
+    s = backend.collect(host)
+    print(json.dumps(s, indent=2) if "--json" in args else render(s))
+    return EXIT[s["level"]]
+
+
+def cmd_demo(args):
+    level = args[0] if args else "ok"
+    if level not in EXIT:
+        die("demo level must be ok, warn or bad")
+    s = backend.demo(level)
+    print(json.dumps(s, indent=2) if "--json" in args else render(s))
+    return EXIT[s["level"]]
+
+
+def cmd_watch(args):
+    try:
+        interval = float(opt(args, "--interval", "5"))
+    except ValueError:
+        die("--interval must be a number")
+    host = opt(args, "--host", backend.DEFAULT_HOST)
+    try:
+        while True:
+            s = backend.collect(host)
+            out = render(s) + "\n\n" + time.strftime("Updated %H:%M:%S") + \
+                " · every %gs · Ctrl-C to stop" % interval
+            print("\033[H\033[2J" + out if sys.stdout.isatty() else out + "\n", flush=True)
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print()
+        return 0
+
+
+def action(name):
+    code, out = backend.do_action(name)
+    if out:
+        print(out)
+    if code != 0:
+        die("%s failed" % name, 1)
+    return 0
+
+
+def on_off(args, on, off, what):
+    if not args or args[0] not in ("on", "off"):
+        die("usage: tsvpn %s on|off" % what)
+    return action(on if args[0] == "on" else off)
+
+
+def run(cmd):
+    try:
+        return subprocess.call(cmd)
+    except FileNotFoundError:
+        die("%s not found" % cmd[0])
+
+
+def tray(window=False):
+    cmd = [sys.executable, os.path.join(APP, "tsvpn_tray.py")] + (["--window"] if window else [])
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    print("Opening the status window." if window else "Tray app started (or already running).")
+    return 0
+
+
+def main(argv):
+    cmd, args = (argv[0], argv[1:]) if argv else ("status", [])
+    if cmd.startswith("--"):          # tsvpn --json  ==  tsvpn status --json
+        cmd, args = "status", argv
+    if cmd in ("help", "-h", "--help"):
+        print(__doc__.strip())
+        return 0
+    if cmd == "status":
+        return cmd_status(args)
+    if cmd == "watch":
+        return cmd_watch(args)
+    if cmd == "demo":
+        return cmd_demo(args)
+    if cmd == "check":
+        return run(["sh", os.path.join(ROOT, "check.sh")] + args)
+    if cmd == "vpn":
+        return on_off(args, "vpn-connect", "vpn-disconnect", "vpn")
+    if cmd in ("tailscale", "ts"):
+        return on_off(args, "ts-up", "ts-down", "tailscale")
+    if cmd == "repair":
+        return action("repair")
+    if cmd == "tray":
+        return tray()
+    if cmd == "window":
+        return tray(window=True)
+    if cmd == "widget":
+        return run(["plasmawindowed", "local.tsvpn.status"])
+    if cmd == "setup":
+        return run(["sudo", "sh", os.path.join(ROOT, "setup.sh")])
+    if cmd == "uninstall":
+        return run(["sudo", "sh", os.path.join(ROOT, "uninstall.sh")] + args)
+    if cmd == "install":
+        return run(["sh", os.path.join(APP, "install-app.sh")])
+    if cmd == "remove":
+        return run(["sh", os.path.join(APP, "install-app.sh"), "remove"])
+    die("unknown command '%s' (try: tsvpn help)" % cmd)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

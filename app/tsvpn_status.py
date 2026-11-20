@@ -193,6 +193,35 @@ def demo(level="ok"):
     return evaluate(s, "home-pc")
 
 
+def rows(s):
+    """(level, label, value) rows shared by the CLI, tray menu and window."""
+    v, t, h = s["vpn"], s["tailscale"], s["host"]
+    rows = []
+    if v["connected"]:
+        rows.append(("ok", "ExpressVPN", "Connected · %s" % v["region"]))
+    elif s["level"] == "bad":
+        rows.append(("bad", "ExpressVPN", v["state"]))
+    else:
+        rows.append(("warn", "ExpressVPN", v["state"]))
+    rows.append(("ok" if v["networklock"] else "off", "Network Lock", v["networklock"] or "unknown"))
+    rows.append(("ok" if s["web_protected"] else "bad", "Web traffic",
+                 "through VPN" if s["web_protected"] else "visible to this network (%s)" % s["web_route"]))
+    rows.append(("ok" if t["state"] == "Running" else "warn", "Tailscale",
+                 t["state"] + (" · " + t["self_ip"] if t["self_ip"] and t["state"] == "Running" else "")))
+    if h["reachable"]:
+        hv = "%s · %.0f ms · %s" % (h["ip"], h["rtt_ms"] or 0, h["path"] or "connected")
+        rows.append(("ok", h["name"], hv))
+    elif h["found"]:
+        rows.append(("warn", h["name"], "not answering" + ("" if h["online"] else " · offline")))
+    else:
+        rows.append(("warn", h["name"], "not found"))
+    rows.append(("ok" if h["dns"] else "warn", "Name lookup", "working" if h["dns"] else "not working"))
+    bad_services = [n for n, st in s["services"].items() if st != "active"]
+    rows.append(("ok" if not bad_services and s["routing_rule"] else "warn", "Helper services",
+                 "running" if not bad_services and s["routing_rule"] else "needs repair"))
+    return rows
+
+
 ACTIONS = {
     "vpn-connect": ["expressvpnctl", "connect"],
     "vpn-disconnect": ["expressvpnctl", "disconnect"],

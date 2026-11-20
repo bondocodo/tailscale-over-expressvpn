@@ -20,6 +20,83 @@ still goes into ExpressVPN.
 > Not affiliated with or endorsed by ExpressVPN or Tailscale. Their names are used only
 > to describe what this works with.
 
+## Quickstart
+
+Before you start, make sure ExpressVPN is installed and signed in, and Tailscale is
+installed and signed in (`sudo tailscale up` once). See [Requirements](#requirements).
+
+```bash
+git clone https://github.com/bondocodo/tailscale-over-expressvpn.git
+```
+```bash
+cd tailscale-over-expressvpn
+```
+
+1. **Pick the device to watch.** Copy the config, then set `TSVPN_HOST` to a machine
+   name from `tailscale status`. Leave it empty to watch the first device found.
+   ```bash
+   cp config.example.env config.env
+   ```
+2. **Apply the system setup.** Read [`setup.sh`](setup.sh) first: it runs as root.
+   ```bash
+   ./tsvpn setup
+   ```
+3. **Install the `tsvpn` command, tray app and widget.** These are for your user
+   only, so no sudo is needed.
+   ```bash
+   ./tsvpn install
+   ```
+4. **Check it.** A green ● means you're protected and the device is reachable.
+   ```bash
+   tsvpn
+   ```
+5. **Optional: add the desktop widget.** Right-click the desktop or panel, choose
+   **Add Widgets**, and search for **Tailscale VPN Status**. Or open it in its own
+   window with `tsvpn widget`.
+
+To undo everything: `tsvpn remove`, then `tsvpn uninstall`.
+
+## Command line: `tsvpn`
+
+```text
+$ tsvpn
+● Protected · home-pc reachable
+  ✓ ExpressVPN       Connected · germany-frankfurt-1
+  ✓ Network Lock     enabled when connected
+  ✓ Web traffic      through VPN
+  ✓ Tailscale        Running · 100.64.0.2
+  ✓ home-pc          100.64.0.10 · 42 ms · direct
+  ✓ Name lookup      working
+  ✓ Helper services  running
+```
+
+| Command | What it does |
+|---|---|
+| `tsvpn` or `tsvpn status` | Show status. Add `--json` for machine-readable output, or `--host NAME` to check another device. |
+| `tsvpn watch [--interval N]` | Live status in the terminal, refreshed every N seconds (default 5). |
+| `tsvpn check` | Run the full local check (`check.sh`). |
+| `tsvpn vpn on` / `off` | Connect or disconnect ExpressVPN. |
+| `tsvpn tailscale on` / `off` | Turn Tailscale on or off (`ts` works too). |
+| `tsvpn repair` | Restart the helper services. Asks for your password. |
+| `tsvpn tray` | Start the tray app. |
+| `tsvpn window` | Open the status window. Starts the tray app if it isn't running. |
+| `tsvpn widget` | Open the Plasma widget in its own window. |
+| `tsvpn setup` / `uninstall [parts]` | Apply or undo the system setup (runs the scripts with sudo). |
+| `tsvpn install` / `remove` | Install or remove the `tsvpn` command, tray app and widget. |
+| `tsvpn demo ok\|warn\|bad` | Show made-up status, for screenshots and testing. |
+| `tsvpn help` | List all commands. |
+
+**Exit codes**, for scripts: `0` green, `1` yellow, `2` red, `3` usage error. For
+example, to get a warning whenever your traffic might be exposed:
+
+```bash
+tsvpn status >/dev/null; [ $? -eq 2 ] && notify-send "VPN leak risk"
+```
+
+Colours are turned off when the output isn't a terminal, or when `NO_COLOR` is set.
+`tsvpn install` links the command into `~/.local/bin`. If that isn't on your `PATH`,
+run `./tsvpn` from this folder instead.
+
 ## Requirements
 
 Tested on:
@@ -68,6 +145,7 @@ a problem, red when there's a risk of leakage.
 |---|---|---|
 | `setup.sh` | Applies the whole setup. Safe to run again. | Yes |
 | `uninstall.sh` | Undoes all of it, or only the parts you name. | Yes |
+| `tsvpn` | Command-line tool for everything below. | Only for `setup`, `uninstall` and `repair` |
 | `check.sh` | Tests that everything is working. | No |
 | `README.md` | This file. | |
 | `LICENSE` | MIT licence. | |
@@ -93,7 +171,7 @@ sh ~/tailscale-over-expressvpn/check.sh
 | `app/tsvpn_status.py` | Status checker shared by both. Prints JSON; no sudo. |
 | `app/tsvpn_tray.py` | Tray app: shield icon, status menu, status window, notifications. |
 | `app/plasmoid/` | Plasma 6 widget for the desktop or panel. |
-| `app/install-app.sh` | Installs or updates both, for your user only. `sh install-app.sh remove` uninstalls. |
+| `app/install-app.sh` | Installs or updates the `tsvpn` command, tray app and widget, for your user only. `sh install-app.sh remove` uninstalls. Same as `tsvpn install` / `tsvpn remove`. |
 
 **Tray app:** a shield in the system tray (it may be under the ^ arrow). Its colour:
 
@@ -237,6 +315,7 @@ sudo sh ~/tailscale-over-expressvpn/uninstall.sh
 ```
 
 Or undo only some parts: `guard`, `routing`, `firewall`, `expressvpn`, `tailscale`.
+This doesn't remove the `tsvpn` command, tray app or widget. Use `tsvpn remove` for those.
 
 ```bash
 sudo sh ~/tailscale-over-expressvpn/uninstall.sh guard routing

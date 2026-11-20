@@ -3,6 +3,7 @@
 quick actions and notifications when something changes."""
 import fcntl
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -36,32 +37,7 @@ def esc(text):
 
 
 def rows_for(s):
-    """(level, label, value) rows shared by the menu and the window."""
-    v, t, h = s["vpn"], s["tailscale"], s["host"]
-    rows = []
-    if v["connected"]:
-        rows.append(("ok", "ExpressVPN", "Connected · %s" % v["region"]))
-    elif s["level"] == "bad":
-        rows.append(("bad", "ExpressVPN", v["state"]))
-    else:
-        rows.append(("warn", "ExpressVPN", v["state"]))
-    rows.append(("ok" if v["networklock"] else "off", "Network Lock", v["networklock"] or "unknown"))
-    rows.append(("ok" if s["web_protected"] else "bad", "Web traffic",
-                 "through VPN" if s["web_protected"] else "visible to this network (%s)" % s["web_route"]))
-    rows.append(("ok" if t["state"] == "Running" else "warn", "Tailscale",
-                 t["state"] + (" · " + t["self_ip"] if t["self_ip"] and t["state"] == "Running" else "")))
-    if h["reachable"]:
-        hv = "%s · %.0f ms · %s" % (h["ip"], h["rtt_ms"] or 0, h["path"] or "connected")
-        rows.append(("ok", h["name"], hv))
-    elif h["found"]:
-        rows.append(("warn", h["name"], "not answering" + ("" if h["online"] else " · offline")))
-    else:
-        rows.append(("warn", h["name"], "not found"))
-    rows.append(("ok" if h["dns"] else "warn", "Name lookup", "working" if h["dns"] else "not working"))
-    bad_services = [n for n, st in s["services"].items() if st != "active"]
-    rows.append(("ok" if not bad_services and s["routing_rule"] else "warn", "Helper services",
-                 "running" if not bad_services and s["routing_rule"] else "needs repair"))
-    return rows
+    return backend.rows(s)
 
 
 class StatusWindow(Gtk.Window):
@@ -282,20 +258,35 @@ class TrayApp:
         return False
 
 
-def single_instance():
+def single_instance(want_window):
+    """Only one tray app at a time. A second launch with --window asks the
+    running one (via SIGUSR1) to open its status window, then exits."""
     path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "tsvpn-tray.lock")
-    f = open(path, "w")
+    f = open(path, "a+")
     try:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
+        f.seek(0)
+        pid = f.read().strip()
+        if want_window and pid.isdigit():
+            try:
+                os.kill(int(pid), signal.SIGUSR1)
+            except OSError:
+                pass
         print("Already running.")
         sys.exit(0)
+    f.seek(0)
+    f.truncate()
+    f.write(str(os.getpid()))
+    f.flush()
     return f
 
 
 if __name__ == "__main__":
-    _lock = single_instance()
+    want_window = "--window" in sys.argv
+    _lock = single_instance(want_window)
     app = TrayApp()
-    if "--window" in sys.argv:
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, lambda: app.show_window() or True)
+    if want_window:
         GLib.timeout_add(800, lambda: app.show_window() or False)
     Gtk.main()
