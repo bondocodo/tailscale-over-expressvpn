@@ -13,6 +13,36 @@ pick in `config.env`. In this README, `<device>` is any device on your tailnet a
 router) and exit nodes. Their addresses are outside `100.64.0.0/10`, so their traffic
 still goes into ExpressVPN.
 
+> **Use at your own risk.** `setup.sh` runs as root and changes your routing, firewall
+> and VPN settings. Read it before running it, and keep `uninstall.sh` handy. It has
+> only been tested on the setup listed below.
+>
+> Not affiliated with or endorsed by ExpressVPN or Tailscale. Their names are used only
+> to describe what this works with.
+
+## Requirements
+
+Tested on:
+
+| Component | Version |
+|---|---|
+| OS | Ubuntu 26.04 LTS |
+| Desktop | KDE Plasma 6.6 (Wayland), for the widget |
+| ExpressVPN | Linux app 14.3, with the `expressvpnctl` command, Lightway protocol |
+| Tailscale | 1.104 |
+| Python | 3.14, with PyGObject, GTK 3, Ayatana AppIndicator and libnotify, for the tray app |
+
+It also assumes:
+
+- systemd, `ufw`, and `iptables` (nftables backend).
+- ExpressVPN's tunnel interface is `tun0`, and its firewall chains hook into the
+  `filter` table's `OUTPUT` chain. ExpressVPN updates could change either. See
+  Troubleshooting.
+- Tailscale uses its default routing table (52) and interface (`tailscale0`).
+
+Other distributions or desktops will probably work for the setup scripts. The tray app
+needs a desktop with a system tray, and the widget needs Plasma 6.
+
 ## Screenshots
 
 Shown with made-up demo data (`python3 app/tsvpn_status.py --demo ok|warn|bad`).
@@ -40,6 +70,7 @@ a problem, red when there's a risk of leakage.
 | `uninstall.sh` | Undoes all of it, or only the parts you name. | Yes |
 | `check.sh` | Tests that everything is working. | No |
 | `README.md` | This file. | |
+| `LICENSE` | MIT licence. | |
 | `config.example.env` | Template for `config.env`, which picks the device the status app watches. `config.env` is not committed. | |
 | `LOCAL.md` | Your own device names and IPs. Not committed. | |
 
