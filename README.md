@@ -1,8 +1,17 @@
 # Tailscale inside ExpressVPN
 
-Lets a Linux laptop reach a home machine over Tailscale while on untrusted networks,
-with all traffic hidden inside ExpressVPN. In this README, `<host>` is the Tailscale
-machine you connect to (set in `config.env`), and `<host-ip>` is its Tailscale IP.
+Lets a Linux machine on an untrusted network reach the devices on your Tailscale network
+(your tailnet), with all of its traffic hidden inside ExpressVPN.
+
+It isn't limited to one device. The routing and firewall changes cover Tailscale's whole
+address range (`100.64.0.0/10`), so every device listed in `tailscale status` is
+reachable, by its Tailscale name or IP. The status app watches one of them, which you
+pick in `config.env`. In this README, `<device>` is any device on your tailnet and
+`<device-ip>` is its Tailscale IP.
+
+**Not covered:** subnet routes (other networks advertised through a Tailscale subnet
+router) and exit nodes. Their addresses are outside `100.64.0.0/10`, so their traffic
+still goes into ExpressVPN.
 
 ## Screenshots
 
@@ -11,7 +20,7 @@ Shown with made-up demo data (`python3 app/tsvpn_status.py --demo ok|warn|bad`).
 **Status window:** green when everything checks out, yellow when the Tailscale side has
 a problem, red when there's a risk of leakage.
 
-| All good | Host not answering | VPN off (leak risk) |
+| All good | Watched device not answering | VPN off (leak risk) |
 |---|---|---|
 | ![Status window, green](docs/screenshots/window-green.png) | ![Status window, yellow](docs/screenshots/window-yellow.png) | ![Status window, red](docs/screenshots/window-red.png) |
 
@@ -31,13 +40,13 @@ a problem, red when there's a risk of leakage.
 | `uninstall.sh` | Undoes all of it, or only the parts you name. | Yes |
 | `check.sh` | Tests that everything is working. | No |
 | `README.md` | This file. | |
-| `config.example.env` | Template for `config.env`, which sets the Tailscale host to watch. `config.env` is not committed. | |
+| `config.example.env` | Template for `config.env`, which picks the device the status app watches. `config.env` is not committed. | |
 | `LOCAL.md` | Your own device names and IPs. Not committed. | |
 
 ## Privacy
 
 Nothing here sends data anywhere. Every check runs locally: `expressvpnctl`,
-`tailscale`, `ip`, `systemctl`, a ping to your own host over Tailscale, and a name lookup
+`tailscale`, `ip`, `systemctl`, a ping to the watched device over Tailscale, and a name lookup
 through Tailscale's own DNS. The app writes no logs or files, apart from a lock file in
 `$XDG_RUNTIME_DIR`. Your device names and IPs live only in `config.env` and `LOCAL.md`,
 which git ignores, so the repository holds no personal values.
@@ -59,16 +68,16 @@ sh ~/tailscale-over-expressvpn/check.sh
 
 | Colour | Meaning | Examples |
 |---|---|---|
-| Green ✓ | Everything checks out | VPN on, web traffic through it, `<host>` answering, helpers running |
-| Yellow ! | Your traffic is protected, but something on the Tailscale side isn't working | Tailscale stopped, `<host>` not answering, a helper service down, name lookup failing, VPN reconnecting while Network Lock blocks traffic |
+| Green ✓ | Everything checks out | VPN on, web traffic through it, watched device answering, helpers running |
+| Yellow ! | Your traffic is protected, but something on the Tailscale side isn't working | Tailscale stopped, watched device not answering, a helper service down, name lookup failing, VPN reconnecting while Network Lock blocks traffic |
 | Red ✗ | Risk of leakage: web traffic is not going through the VPN | ExpressVPN off or disconnected, or it says it's connected but traffic goes out another way |
 
-Red is decided by one check: whether internet traffic from this laptop is routed into
+Red is decided by one check: whether internet traffic from this machine is routed into
 ExpressVPN's tunnel (`tun0`). The icons are in `app/icons/`.
 
 Click the shield for the menu, or open **Tailscale VPN Status** from the app launcher for the full window. It
 starts at login and sends a notification when the VPN connects or drops, or
-`<host>` stops or starts answering.
+the watched device stops or starts answering.
 
 **Widget:** right-click the desktop or panel, then **Add Widgets**, and search for
 **Tailscale VPN Status**. On the desktop it shows the full status; on a panel it shows
@@ -80,18 +89,19 @@ Both refresh every 5 seconds and have the same buttons:
 - **Tailscale on/off:** `tailscale up` / `down`
 - **Repair:** restarts the two helper services. It asks for your password.
 
-The device to watch is `TSVPN_HOST` in `config.env` (copy `config.example.env` to
-start). If it's empty, the first Tailscale device found is used. After moving this folder, run
+The app watches one device: `TSVPN_HOST` in `config.env` (copy `config.example.env` to
+start). If it's empty, the first Tailscale device found is used. Your other devices work
+just the same; the app just doesn't show them. After moving this folder, run
 `sh app/install-app.sh` again, because the widget and launcher store its path.
 
 ## How it works
 
 ```
-apps ──► tailscale0 ──(WireGuard)──► ExpressVPN tun0 ──► Wi-Fi ──► ExpressVPN server ──► internet ──► <host>
+apps ──► tailscale0 ──(WireGuard)──► ExpressVPN tun0 ──► Wi-Fi ──► ExpressVPN server ──► internet ──► any tailnet device
 web  ─────────────────────────────► ExpressVPN tun0 ──► Wi-Fi ──► ExpressVPN server ──► internet
 ```
 
-- All traffic leaving the laptop goes through ExpressVPN. The local network only sees
+- All traffic leaving the machine goes through ExpressVPN. The local network only sees
   encrypted traffic to an ExpressVPN server, with no sign of Tailscale.
 - Traffic to your Tailscale devices is encrypted twice: by Tailscale end to end, then by
   ExpressVPN.
@@ -101,8 +111,8 @@ web  ─────────────────────────
 
 ## Your daily routine
 
-Nothing. Open the laptop: ExpressVPN connects, Tailscale comes up inside it, and the
-home PC is reachable as `<host>`. The only manual step is a hotel or café login
+Nothing. Start the machine: ExpressVPN connects, Tailscale comes up inside it, and every
+device on your tailnet is reachable by its Tailscale name or IP. The only manual step is a hotel or café login
 page: log in, let ExpressVPN connect, then browse.
 
 ## What was changed, and why
@@ -113,7 +123,7 @@ page: log in, let ExpressVPN connect, then browse.
 |---|---|---|---|
 | `autoconnect` | false | **true** | Connects at startup. |
 | `background` | (unknown) | **enabled** | Needed for auto-connect without the app window open. |
-| `allowlan` | true | **false** | Stops other devices on the Wi-Fi reaching this laptop. |
+| `allowlan` | true | **false** | Stops other devices on the local network reaching this machine. |
 | `networklock` | false ("enabled when connected") | **false** ("enabled when connected") | Unchanged in the end. Blocks traffic if the VPN drops, but you can still disconnect on purpose. |
 
 The `networklock` value is confusing: `false` shows as "enabled when connected" in
@@ -140,7 +150,7 @@ at all whenever the VPN is off.
   as the first rule, re-checking every 5 seconds.
 - **Why:** while ExpressVPN is connected, Network Lock rejects all outgoing traffic not
   going into `tun0`, in either mode. That blocked every app's connection to
-  `<host>` and Tailscale's DNS (`100.100.100.100`). ExpressVPN rebuilds its firewall
+  tailnet devices and Tailscale's DNS (`100.100.100.100`). ExpressVPN rebuilds its firewall
   on every reconnect, which would push a one-off rule below its block, so the guard
   puts it back on top.
 - ExpressVPN has no built-in way to allow this. Its "Allow LAN" setting was tested and
@@ -152,7 +162,7 @@ at all whenever the VPN is off.
 ### 4. Firewall: ufw
 
 - Default deny incoming, allow outgoing, allow incoming on `tailscale0`, enabled at boot.
-- **Why:** a VPN protects traffic leaving the laptop, but doesn't stop devices on the
+- **Why:** a VPN protects traffic leaving the machine, but doesn't stop devices on the
   same Wi-Fi from connecting to it. Your Tailscale devices can still connect.
 
 ### 5. Tailscale
@@ -187,7 +197,7 @@ sudo systemctl disable --now tailscaled
 ```
 
 Without ExpressVPN your web traffic is visible to the local network again. Your
-connection to `<host>` stays encrypted by Tailscale either way.
+connections to tailnet devices stay encrypted by Tailscale either way.
 
 ## Undoing the setup
 
@@ -202,7 +212,7 @@ sudo sh ~/tailscale-over-expressvpn/uninstall.sh guard routing
 ```
 
 Removing `guard` or `routing` while you still use ExpressVPN and Tailscale together
-breaks access to `<host>` again. Re-apply with `sudo sh setup.sh`.
+breaks access to your tailnet devices again. Re-apply with `sudo sh setup.sh`.
 
 ## Troubleshooting
 
@@ -210,12 +220,12 @@ Run `check.sh` first. Then:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `<host>` doesn't answer, `tailscale ping` does | Guard not running, so Network Lock blocks apps | `sudo systemctl restart tailscale-vpn-guard` |
-| `ip route get <host-ip>` shows `tun0` | Routing rule missing | `sudo systemctl restart tailscale-over-vpn` |
+| `<device>` doesn't answer, `tailscale ping` does | Guard not running, so Network Lock blocks apps | `sudo systemctl restart tailscale-vpn-guard` |
+| `ip route get <device-ip>` shows `tun0` | Routing rule missing | `sudo systemctl restart tailscale-over-vpn` |
 | No internet after disconnecting ExpressVPN on purpose | Network Lock set to "always enabled" | `sudo expressvpnctl set networklock false` |
-| `<host>` doesn't resolve | Tailscale DNS blocked or Tailscale down | Use `<host-ip>`, then check the guard and `tailscale status` |
+| `<device>` doesn't resolve | Tailscale DNS blocked or Tailscale down | Use `<device-ip>`, then check the guard and `tailscale status` |
 | "Unable to connect to the coordination server" right after boot | Tailscale started before the VPN was ready | Usually clears itself within a minute |
-| Remote Desktop or SSH times out, ping works | The Windows PC isn't allowing it | Enable it on the PC and allow it in Windows Firewall |
+| Remote Desktop or SSH times out, ping works | That device isn't allowing it | Enable the service on that device and allow it through its firewall |
 
 Useful commands:
 
@@ -229,7 +239,7 @@ tailscale status
 ip rule
 ```
 ```bash
-ip route get <host-ip>
+ip route get <device-ip>
 ```
 ```bash
 sudo iptables -S OUTPUT | head -3
@@ -238,7 +248,7 @@ sudo iptables -S OUTPUT | head -3
 ## Reference
 
 Your own device names and Tailscale IPs go in `LOCAL.md`, which git ignores.
-Get them with `tailscale status` and `tailscale ip <host>`.
+Get them with `tailscale status` and `tailscale ip <device>`.
 
 ## Remaining risks
 
@@ -246,8 +256,8 @@ Get them with `tailscale status` and `tailscale ip <host>`.
 - **Boot gap:** with Network Lock on "enabled when connected", there are a few seconds at
   boot before ExpressVPN connects.
 - **Visible metadata:** the network can see that you use a VPN, how much traffic you
-  send, and your laptop's MAC address and hostname.
+  send, and this machine's MAC address and hostname.
 - **Trust in ExpressVPN:** it sees which websites you visit, but can't read your Tailscale
   traffic.
 - **ExpressVPN updates** could change its firewall chain names or rule layout. If
-  `<host>` stops answering after an update, check the guard first.
+  tailnet devices stop answering after an update, check the guard first.
