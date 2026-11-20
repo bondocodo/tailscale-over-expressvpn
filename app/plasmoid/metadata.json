@@ -1,0 +1,14 @@
+{
+    "KPlugin": {
+        "Id": "local.tsvpn.status",
+        "Name": "Tailscale VPN Status",
+        "Description": "Shows whether ExpressVPN is protecting you and whether your Tailscale host is reachable",
+        "Icon": "security-high",
+        "Category": "System Information",
+        "Version": "1.0",
+        "License": "MIT",
+        "Authors": [{ "Name": "Local" }]
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

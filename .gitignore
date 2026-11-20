@@ -1,0 +1,15 @@
+# Personal values: never commit
+config.env
+LOCAL.md
+
+# Progress notes
+PROGRESS.md
+PROGRESS-ARCHIVE.md
+
+# Diagnostics that may hold network details
+fw-*.txt
+*.log
+
+# Python
+__pycache__/
+*.pyc
