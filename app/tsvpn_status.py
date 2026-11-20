@@ -4,6 +4,7 @@ the Plasma widget. No root needed.
 
   tsvpn_status.py                 print status as JSON
   tsvpn_status.py --host NAME     check a different Tailscale device
+  tsvpn_status.py --demo LEVEL    made-up status (ok | warn | bad) for screenshots
   tsvpn_status.py action ACTION   vpn-connect | vpn-disconnect | ts-up | ts-down | repair
 """
 import json
@@ -123,7 +124,12 @@ def collect(host=DEFAULT_HOST):
     s["services"] = {name: (states[i] if i < len(states) else "unknown") for i, name in enumerate(SERVICES)}
     _, rules = run(["ip", "rule"], timeout=2)
     s["routing_rule"] = bool(re.search(r"^60:.*100\.64\.0\.0/10 lookup 52", rules, re.M))
+    return evaluate(s, host)
 
+
+def evaluate(s, host=""):
+    """Add level, problems and summary to raw check results."""
+    h = s["host"]
     # Colour rules:
     #   bad  (red)    risk of leakage: web traffic is not going through the VPN
     #   warn (yellow) no leak, but something is not working (Tailscale, host, helpers)
@@ -166,6 +172,27 @@ def collect(host=DEFAULT_HOST):
     return s
 
 
+def demo(level="ok"):
+    """Made-up status for screenshots and testing. Contains no real data."""
+    s = {
+        "time": int(time.time()), "docs": DOCS,
+        "vpn": {"installed": True, "state": "Connected", "region": "germany-frankfurt-1",
+                "protocol": "LightwayUdp", "networklock": "enabled when connected", "connected": True},
+        "web_route": "tun0", "web_protected": True,
+        "tailscale": {"state": "Running", "online": True, "self_ip": "100.64.0.2", "health": []},
+        "host": {"name": "home-pc", "found": True, "ip": "100.64.0.10", "online": True, "path": "direct",
+                 "os": "windows", "route_dev": "tailscale0", "reachable": True, "rtt_ms": 42.0, "dns": True},
+        "services": {name: "active" for name in SERVICES},
+        "routing_rule": True,
+    }
+    if level == "warn":
+        s["host"].update(reachable=False, rtt_ms=None)
+    elif level == "bad":
+        s["vpn"].update(state="Disconnected", connected=False, region="")
+        s["web_route"], s["web_protected"] = "wlan0", False
+    return evaluate(s, "home-pc")
+
+
 ACTIONS = {
     "vpn-connect": ["expressvpnctl", "connect"],
     "vpn-disconnect": ["expressvpnctl", "disconnect"],
@@ -187,6 +214,9 @@ if __name__ == "__main__":
         code, out = do_action(args[1])
         print(json.dumps({"action": args[1], "code": code, "output": out}))
         sys.exit(0 if code == 0 else 1)
+    if args[:1] == ["--demo"]:
+        print(json.dumps(demo(args[1] if len(args) > 1 else "ok")))
+        sys.exit(0)
     host = DEFAULT_HOST
     if args[:1] == ["--host"] and len(args) == 2:
         host = args[1]

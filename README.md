@@ -4,6 +4,25 @@ Lets a Linux laptop reach a home machine over Tailscale while on untrusted netwo
 with all traffic hidden inside ExpressVPN. In this README, `<host>` is the Tailscale
 machine you connect to (set in `config.env`), and `<host-ip>` is its Tailscale IP.
 
+## Screenshots
+
+Shown with made-up demo data (`python3 app/tsvpn_status.py --demo ok|warn|bad`).
+
+**Status window:** green when everything checks out, yellow when the Tailscale side has
+a problem, red when there's a risk of leakage.
+
+| All good | Host not answering | VPN off (leak risk) |
+|---|---|---|
+| ![Status window, green](docs/screenshots/window-green.png) | ![Status window, yellow](docs/screenshots/window-yellow.png) | ![Status window, red](docs/screenshots/window-red.png) |
+
+**Plasma widget:**
+
+![Plasma widget](docs/screenshots/widget.png)
+
+**Tray icons:**
+
+![Green, yellow and red tray shields](docs/screenshots/tray-icons.png)
+
 ## Files in this folder
 
 | File | What it does | Needs sudo |
